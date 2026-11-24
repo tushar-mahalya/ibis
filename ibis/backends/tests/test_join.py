@@ -187,6 +187,7 @@ def test_semi_join_topk(con, batting, awards_players, func):
 )
 @pytest.mark.notimpl(
     ["mssql", "singlestoredb"],
+    condition=vparse(pd.__version__) < vparse("3"),
     raises=com.IbisTypeError,
     reason="postgres can't handle null types columns",
 )

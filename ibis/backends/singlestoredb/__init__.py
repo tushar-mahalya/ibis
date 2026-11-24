@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import warnings
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, unquote_plus
@@ -781,19 +782,22 @@ class Backend(
         )
         create_stmt_sql = create_stmt.sql(dialect)
 
-        df = op.data.to_frame()
-        df = df.replace(float("nan"), None)
+        def nan_to_null(value: Any):
+            # SingleStoreDB has no NaN, and the driver refuses to send one
+            return None if isinstance(value, float) and math.isnan(value) else value
 
-        # Fix: Convert itertuples result to list for SingleStoreDB compatibility
-        data = list(df.itertuples(index=False))
+        table = op.data.to_pyarrow(schema)
+        rows = [
+            tuple(map(nan_to_null, row)) for row in zip(*table.to_pydict().values())
+        ]
         sql = self._build_insert_template(
             name, schema=schema, columns=True, placeholder="%s"
         )
         with self.begin() as cur:
             cur.execute(create_stmt_sql)
 
-            if not df.empty:
-                cur.executemany(sql, data)
+            if rows:
+                cur.executemany(sql, rows)
 
     # TODO(kszucs): should make it an abstract method or remove the use of it
     # from .execute()
